@@ -1,3 +1,12 @@
+# Templates
+
+Ready-to-use templates for static site deployment. Copy these into your project.
+
+## buildspec.yml (CodeBuild)
+
+Create `buildspec.yml` in your project root:
+
+```yaml
 version: 0.2
 
 # =============================================================================
@@ -36,11 +45,8 @@ phases:
   pre_build:
     commands:
       - echo "Running pre-build checks..."
-      # Lint (continue on failure for now)
       - npm run lint 2>/dev/null || echo "Linting skipped or failed"
-      # Tests (continue on failure)
       - npm run test -- --passWithNoTests 2>/dev/null || echo "Tests skipped or failed"
-      # Security audit (informational)
       - npm audit --audit-level=high 2>/dev/null || echo "Audit warnings present"
 
   build:
@@ -155,7 +161,6 @@ phases:
           echo "WARNING: Invalidating all paths (/*)"
           PATHS="/*"
         else
-          # Safe default: only invalidate index.html
           PATHS="/index.html"
         fi
         
@@ -167,20 +172,170 @@ phases:
         
         echo "Invalidation created: $INVALIDATION_ID"
       
-      - echo "=========================================="
       - echo "Deployment complete!"
-      - echo "S3 Bucket: $S3_BUCKET"
-      - echo "Distribution: $CLOUDFRONT_DISTRIBUTION_ID"
-      - echo "Invalidation: $INVALIDATION_ID"
-      - echo "=========================================="
 
 cache:
   paths:
     - node_modules/**/*
     - .npm/**/*
+```
 
-# Artifacts (optional - for CodePipeline)
-# artifacts:
-#   files:
-#     - '**/*'
-#   base-directory: $BUILD_DIR
+---
+
+## deploy.sh (S3 Sync Script)
+
+Create `scripts/deploy.sh`:
+
+```bash
+#!/bin/bash
+# Static Site S3 Deployment Script
+# Usage: ./deploy.sh <bucket-name> [build-dir]
+
+set -e
+
+BUCKET="$1"
+BUILD_DIR="${2:-dist}"
+
+if [ -z "$BUCKET" ]; then
+  echo "Usage: ./deploy.sh <bucket-name> [build-dir]"
+  exit 1
+fi
+
+if [ ! -d "$BUILD_DIR" ] || [ ! -f "$BUILD_DIR/index.html" ]; then
+  echo "Error: Build directory or index.html not found"
+  exit 1
+fi
+
+echo "Deploying $BUILD_DIR to s3://$BUCKET"
+
+# Hashed assets (immutable, 1 year)
+aws s3 sync "$BUILD_DIR" "s3://$BUCKET" \
+  --exclude "*" \
+  --include "*.*.js" \
+  --include "*.*.css" \
+  --cache-control "max-age=31536000, immutable"
+
+# Images (1 week)
+aws s3 sync "$BUILD_DIR" "s3://$BUCKET" \
+  --exclude "*" \
+  --include "*.png" \
+  --include "*.jpg" \
+  --include "*.svg" \
+  --include "*.webp" \
+  --cache-control "max-age=604800"
+
+# Other assets (1 day)
+aws s3 sync "$BUILD_DIR" "s3://$BUCKET" \
+  --exclude "*.html" \
+  --exclude "*.*.js" \
+  --exclude "*.*.css" \
+  --exclude "*.png" \
+  --exclude "*.jpg" \
+  --exclude "*.svg" \
+  --exclude "*.webp" \
+  --cache-control "max-age=86400"
+
+# HTML files (short cache)
+find "$BUILD_DIR" -name "*.html" ! -name "index.html" -type f | while read file; do
+  relative="${file#$BUILD_DIR/}"
+  aws s3 cp "$file" "s3://$BUCKET/$relative" --cache-control "max-age=300"
+done
+
+# index.html LAST (no cache)
+aws s3 cp "$BUILD_DIR/index.html" "s3://$BUCKET/index.html" \
+  --cache-control "no-cache, no-store, must-revalidate"
+
+# Cleanup deleted files
+aws s3 sync "$BUILD_DIR" "s3://$BUCKET" --delete --size-only
+
+echo "Deployment complete!"
+```
+
+---
+
+## invalidate.sh (CloudFront Invalidation)
+
+Create `scripts/invalidate.sh`:
+
+```bash
+#!/bin/bash
+# CloudFront Invalidation Script
+# Usage: ./invalidate.sh <distribution-id> [paths]
+
+set -e
+
+DISTRIBUTION_ID="$1"
+PATHS="${2:-/index.html}"
+
+if [ -z "$DISTRIBUTION_ID" ]; then
+  echo "Usage: ./invalidate.sh <distribution-id> [paths]"
+  echo "Example: ./invalidate.sh E1234567890ABC /index.html"
+  exit 1
+fi
+
+if [ "$PATHS" = "/*" ]; then
+  echo "WARNING: Invalidating /* is expensive. Consider /index.html only."
+  read -p "Continue? (y/N) " -n 1 -r
+  echo
+  [[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
+fi
+
+echo "Creating invalidation for: $PATHS"
+
+INVALIDATION_ID=$(aws cloudfront create-invalidation \
+  --distribution-id "$DISTRIBUTION_ID" \
+  --paths $PATHS \
+  --query 'Invalidation.Id' \
+  --output text)
+
+echo "Invalidation created: $INVALIDATION_ID"
+echo "Check status: aws cloudfront get-invalidation --distribution-id $DISTRIBUTION_ID --id $INVALIDATION_ID"
+```
+
+---
+
+## Kiro Hooks
+
+Add these hooks to `.kiro/hooks/` in your project:
+
+### deploy-static-site.kiro.hook
+
+```json
+{
+  "name": "Deploy Static Site",
+  "version": "1.0.0",
+  "when": { "type": "userTriggered" },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Execute static site deployment: validate AWS CLI, build project, sync to S3 with proper cache headers, invalidate CloudFront /index.html. Follow security rules: never make S3 public, always use OAC."
+  }
+}
+```
+
+### security-audit.kiro.hook
+
+```json
+{
+  "name": "Security Audit",
+  "version": "1.0.0",
+  "when": { "type": "userTriggered" },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Audit S3 bucket and CloudFront: check Block Public Access, bucket policy allows only CloudFront OAC, viewer protocol is HTTPS, TLS 1.2+. Report pass/fail for each check."
+  }
+}
+```
+
+### pre-merge-checklist.kiro.hook
+
+```json
+{
+  "name": "Pre-Merge Checklist",
+  "version": "1.0.0",
+  "when": { "type": "userTriggered" },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run pre-merge checks: npm ci, npm run build, npm run lint, npm test, scan for secrets in code, verify no AWS credentials committed. Report pass/fail summary."
+  }
+}
+```

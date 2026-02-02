@@ -29,6 +29,7 @@ These rules are enforced throughout this power. **The agent must refuse any requ
 - Configuring cache headers or CloudFront invalidation → `03-caching-and-headers.md`
 - Deploying a Single Page Application (React, Vue, Angular) → `04-spa-routing.md`
 - Debugging AccessDenied, stale content, or 404 errors → `05-troubleshooting.md`
+- Need buildspec.yml, deploy scripts, or Kiro hooks → `06-templates.md`
 
 ## Available Steering Files
 
@@ -40,6 +41,7 @@ These rules are enforced throughout this power. **The agent must refuse any requ
 | `03-caching-and-headers` | Cache-Control rules, invalidation strategy |
 | `04-spa-routing` | SPA routing with CloudFront custom error responses |
 | `05-troubleshooting` | Common issues: stale content, AccessDenied, 404s |
+| `06-templates` | Ready-to-use buildspec.yml, deploy scripts, Kiro hooks |
 
 ## Onboarding
 
@@ -122,24 +124,22 @@ Before deploying, verify:
 
 ## Templates
 
-This power includes ready-to-use templates in the `templates/` directory:
+This power includes ready-to-use templates. Load the `06-templates` steering file for:
 
-| Template | Purpose |
-|----------|---------|
-| `buildspec.yml` | CodeBuild build specification with parameterized deployment |
-| `scripts/deploy.sh` | S3 sync with proper cache headers |
-| `scripts/invalidate.sh` | Safe CloudFront invalidation |
+- `buildspec.yml` — CodeBuild build specification
+- `deploy.sh` — S3 sync with proper cache headers  
+- `invalidate.sh` — Safe CloudFront invalidation
+- Kiro hooks — Automation for common tasks
 
 ## Hooks
 
-Example Kiro hooks are provided in the `hooks/` directory:
+Example Kiro hooks are provided in the `06-templates` steering file:
 
-| Hook | Trigger | Purpose |
-|------|---------|---------|
-| `deploy-static-site` | User triggered | Full GitOps deployment workflow |
-| `safe-invalidation` | User triggered | Invalidate CloudFront safely |
-| `security-audit` | User triggered | Audit S3 + CloudFront security |
-| `pre-merge-checklist` | User triggered | PR gating checks |
+| Hook | Purpose |
+|------|---------|
+| `deploy-static-site` | Full deployment workflow |
+| `security-audit` | S3 + CloudFront audit |
+| `pre-merge-checklist` | PR gating checks |
 
 ## Quick Reference
 
