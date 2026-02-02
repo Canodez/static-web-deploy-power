@@ -21,6 +21,15 @@ These rules are enforced throughout this power. **The agent must refuse any requ
 5. **Least privilege IAM** — CodeBuild role scoped to specific bucket and distribution
 6. **No secrets in Git** — Use Parameter Store, Secrets Manager, or CodeBuild environment variables
 
+## When to Load Steering Files
+
+- Setting up S3 bucket or CloudFront distribution → `00-architecture-security-baseline.md`
+- Configuring Git branching, PRs, or deployment workflow → `01-gitops-workflow.md`
+- Setting up CodeBuild, CodePipeline, or IAM policies → `02-ci-cd-codebuild.md`
+- Configuring cache headers or CloudFront invalidation → `03-caching-and-headers.md`
+- Deploying a Single Page Application (React, Vue, Angular) → `04-spa-routing.md`
+- Debugging AccessDenied, stale content, or 404 errors → `05-troubleshooting.md`
+
 ## Available Steering Files
 
 | File | Purpose |
