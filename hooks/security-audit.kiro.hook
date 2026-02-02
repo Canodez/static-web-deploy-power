@@ -1,0 +1,12 @@
+{
+  "name": "Security Audit (S3 + CloudFront)",
+  "version": "1.0.0",
+  "description": "Audit S3 bucket and CloudFront distribution security configuration against best practices.",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Perform a security audit of the static site infrastructure:\n\n1. **Gather Information:**\n   - Ask for S3 bucket name\n   - Ask for CloudFront distribution ID\n\n2. **S3 Bucket Audit:**\n   - Check Block Public Access settings:\n     `aws s3api get-public-access-block --bucket <bucket>`\n     ✅ All four settings should be true\n   \n   - Check bucket policy:\n     `aws s3api get-bucket-policy --bucket <bucket>`\n     ✅ Should only allow cloudfront.amazonaws.com principal\n     ✅ Should have AWS:SourceArn condition\n     ❌ Should NOT have Principal: \"*\"\n   \n   - Check bucket ACL:\n     `aws s3api get-bucket-acl --bucket <bucket>`\n     ✅ Should only have owner permissions\n\n3. **CloudFront Audit:**\n   - Check OAC configuration:\n     `aws cloudfront get-distribution --id <dist-id>`\n     ✅ Should have OriginAccessControlId set\n     ❌ Should NOT have OriginAccessIdentity (legacy OAI)\n   \n   - Check viewer protocol policy:\n     ✅ Should be \"redirect-to-https\" or \"https-only\"\n     ❌ Should NOT be \"allow-all\"\n   \n   - Check TLS version:\n     ✅ Should be TLSv1.2_2021 or higher\n   \n   - Check default root object:\n     ✅ Should be set to \"index.html\"\n\n4. **Report:**\n   Generate a security report with:\n   - ✅ Passing checks\n   - ❌ Failing checks with remediation steps\n   - ⚠️ Warnings for suboptimal configurations\n\n5. **Remediation:**\n   For any failing checks, provide the exact AWS CLI commands to fix them.\n\n**Critical Failures (Must Fix):**\n- Public bucket access\n- Missing OAC\n- HTTP allowed\n- Weak TLS"
+  }
+}

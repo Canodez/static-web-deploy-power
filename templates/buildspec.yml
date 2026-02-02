@@ -1,0 +1,186 @@
+version: 0.2
+
+# =============================================================================
+# Static Site Deployment Buildspec
+# =============================================================================
+# Required Environment Variables (set in CodeBuild project):
+#   - S3_BUCKET: Target S3 bucket name
+#   - CLOUDFRONT_DISTRIBUTION_ID: CloudFront distribution ID
+#   - BUILD_DIR: Build output directory (default: dist)
+#   - SITE_TYPE: "static" or "spa" (affects cache headers)
+#
+# Optional Environment Variables:
+#   - NODE_VERSION: Node.js version (default: 20)
+#   - INVALIDATE_ALL: Set to "true" to invalidate /* (use sparingly)
+# =============================================================================
+
+env:
+  variables:
+    BUILD_DIR: "dist"
+    SITE_TYPE: "static"
+    NODE_VERSION: "20"
+  # Uncomment to use Parameter Store for secrets:
+  # parameter-store:
+  #   API_KEY: "/mysite/api-key"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: $NODE_VERSION
+    commands:
+      - echo "Node version:" && node --version
+      - echo "npm version:" && npm --version
+      - echo "Installing dependencies..."
+      - npm ci --prefer-offline
+
+  pre_build:
+    commands:
+      - echo "Running pre-build checks..."
+      # Lint (continue on failure for now)
+      - npm run lint 2>/dev/null || echo "Linting skipped or failed"
+      # Tests (continue on failure)
+      - npm run test -- --passWithNoTests 2>/dev/null || echo "Tests skipped or failed"
+      # Security audit (informational)
+      - npm audit --audit-level=high 2>/dev/null || echo "Audit warnings present"
+
+  build:
+    commands:
+      - echo "Building site..."
+      - npm run build
+      - echo "Build complete. Contents of $BUILD_DIR:"
+      - ls -la $BUILD_DIR/
+
+  post_build:
+    commands:
+      - echo "Starting deployment to S3..."
+      
+      # Validate required variables
+      - |
+        if [ -z "$S3_BUCKET" ]; then
+          echo "ERROR: S3_BUCKET environment variable not set"
+          exit 1
+        fi
+        if [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+          echo "ERROR: CLOUDFRONT_DISTRIBUTION_ID environment variable not set"
+          exit 1
+        fi
+      
+      # Step 1: Upload hashed assets with immutable cache (1 year)
+      - echo "Uploading hashed assets (immutable cache)..."
+      - |
+        aws s3 sync $BUILD_DIR s3://$S3_BUCKET \
+          --exclude "*" \
+          --include "*.*.js" \
+          --include "*.*.css" \
+          --include "*.*.woff" \
+          --include "*.*.woff2" \
+          --cache-control "max-age=31536000, immutable"
+      
+      # Step 2: Upload images and media (1 week cache)
+      - echo "Uploading images and media..."
+      - |
+        aws s3 sync $BUILD_DIR s3://$S3_BUCKET \
+          --exclude "*" \
+          --include "*.png" \
+          --include "*.jpg" \
+          --include "*.jpeg" \
+          --include "*.gif" \
+          --include "*.svg" \
+          --include "*.webp" \
+          --include "*.ico" \
+          --include "*.mp4" \
+          --include "*.webm" \
+          --cache-control "max-age=604800"
+      
+      # Step 3: Upload non-hashed JS/CSS (1 day cache)
+      - echo "Uploading non-hashed assets..."
+      - |
+        aws s3 sync $BUILD_DIR s3://$S3_BUCKET \
+          --exclude "*.html" \
+          --exclude "*.*.js" \
+          --exclude "*.*.css" \
+          --exclude "*.png" \
+          --exclude "*.jpg" \
+          --exclude "*.jpeg" \
+          --exclude "*.gif" \
+          --exclude "*.svg" \
+          --exclude "*.webp" \
+          --exclude "*.ico" \
+          --exclude "*.mp4" \
+          --exclude "*.webm" \
+          --exclude "*.woff" \
+          --exclude "*.woff2" \
+          --cache-control "max-age=86400"
+      
+      # Step 4: Upload HTML files (except index.html) with short cache
+      - echo "Uploading HTML files..."
+      - |
+        find $BUILD_DIR -name "*.html" ! -name "index.html" -type f | while read file; do
+          relative="${file#$BUILD_DIR/}"
+          aws s3 cp "$file" "s3://$S3_BUCKET/$relative" \
+            --cache-control "max-age=300"
+        done
+      
+      # Step 5: Upload index.html LAST with no-cache
+      - echo "Uploading index.html (no cache)..."
+      - |
+        aws s3 cp $BUILD_DIR/index.html s3://$S3_BUCKET/index.html \
+          --cache-control "no-cache, no-store, must-revalidate"
+      
+      # Step 6: Clean up deleted files
+      - echo "Cleaning up deleted files..."
+      - |
+        aws s3 sync $BUILD_DIR s3://$S3_BUCKET --delete \
+          --exclude "*" \
+          --include "*.html" \
+          --include "*.js" \
+          --include "*.css" \
+          --include "*.png" \
+          --include "*.jpg" \
+          --include "*.jpeg" \
+          --include "*.gif" \
+          --include "*.svg" \
+          --include "*.webp" \
+          --include "*.ico" \
+          --include "*.woff" \
+          --include "*.woff2" \
+          --include "*.json" \
+          --include "*.xml" \
+          --include "*.txt"
+      
+      # Step 7: CloudFront Invalidation
+      - echo "Creating CloudFront invalidation..."
+      - |
+        if [ "$INVALIDATE_ALL" = "true" ]; then
+          echo "WARNING: Invalidating all paths (/*)"
+          PATHS="/*"
+        else
+          # Safe default: only invalidate index.html
+          PATHS="/index.html"
+        fi
+        
+        INVALIDATION_ID=$(aws cloudfront create-invalidation \
+          --distribution-id $CLOUDFRONT_DISTRIBUTION_ID \
+          --paths $PATHS \
+          --query 'Invalidation.Id' \
+          --output text)
+        
+        echo "Invalidation created: $INVALIDATION_ID"
+      
+      - echo "=========================================="
+      - echo "Deployment complete!"
+      - echo "S3 Bucket: $S3_BUCKET"
+      - echo "Distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+      - echo "Invalidation: $INVALIDATION_ID"
+      - echo "=========================================="
+
+cache:
+  paths:
+    - node_modules/**/*
+    - .npm/**/*
+
+# Artifacts (optional - for CodePipeline)
+# artifacts:
+#   files:
+#     - '**/*'
+#   base-directory: $BUILD_DIR

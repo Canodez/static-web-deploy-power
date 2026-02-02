@@ -1,0 +1,12 @@
+{
+  "name": "Safe CloudFront Invalidation",
+  "version": "1.0.0",
+  "description": "Create a safe CloudFront cache invalidation. Defaults to /index.html only. Warns before invalidating all paths.",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Execute a safe CloudFront invalidation:\n\n1. **Gather Information:**\n   - Ask for CloudFront distribution ID (or check config/environment)\n   - Ask what paths to invalidate (default: /index.html only)\n\n2. **Validate:**\n   - If user requests `/*` (all paths), WARN them:\n     - It's expensive (costs after 1000/month)\n     - Usually unnecessary if using cache busting\n     - Suggest invalidating specific paths instead\n   - Get explicit confirmation for `/*`\n\n3. **Execute:**\n   - Run: `aws cloudfront create-invalidation --distribution-id <ID> --paths <paths>`\n   - Report the invalidation ID\n\n4. **Follow Up:**\n   - Provide command to check status\n   - Explain invalidation typically takes 1-5 minutes\n   - Suggest testing with `curl -I <url>` to check X-Cache header\n\n**Best Practices to Mention:**\n- Prefer cache busting (hashed filenames) over invalidation\n- Only invalidate index.html for most deployments\n- Hashed assets (main.abc123.js) never need invalidation"
+  }
+}
