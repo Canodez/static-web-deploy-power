@@ -1,0 +1,14 @@
+# Guide files (local reference only)
+kiro-powers-guide.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
