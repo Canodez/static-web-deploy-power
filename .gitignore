@@ -1,6 +1,9 @@
 # Guide files (local reference only)
 kiro-powers-guide.txt
 
+# Testing (internal validation only)
+TESTING.md
+
 # OS files
 .DS_Store
 Thumbs.db
