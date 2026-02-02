@@ -3,7 +3,7 @@ name: "static-web-deploy-aws"
 displayName: "Static Web Deploy (AWS)"
 description: "Production-grade static website deployment to AWS using S3 (private origin), CloudFront with OAC, and GitOps CI/CD via CodeBuild. Secure by default, opinionated for real teams."
 keywords: ["static site", "static web app", "website", "S3", "CloudFront", "CDN", "OAC", "origin access control", "deploy", "deployment", "CI/CD", "pipeline", "CodeBuild", "CodePipeline", "GitOps", "pull request", "invalidation", "cache-control", "SPA", "index.html", "headers", "cache busting"]
-author: "Kiro Power Builder"
+author: "Canodez"
 ---
 
 # Static Web Deploy (AWS)
